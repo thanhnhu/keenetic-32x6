@@ -1,0 +1,46 @@
+diff --git a/drivers/mtd/ndmpart_di.c b/drivers/mtd/ndmpart_di.c
+index ce79b1b0..550b5e6c 100644
+--- a/drivers/mtd/ndmpart_di.c
++++ b/drivers/mtd/ndmpart_di.c
+@@ -285,8 +285,9 @@ static inline u32 __ndmpart_di_u_state_offset(struct mtd_info *mtd)
+ 	if (offset != NDMPART_DI_NO_OFFSET)
+ 		return offset;
+ 
+-	/* fixed offset */
+-	offset = mtd->size >> 1;
++	/* Viettel 32x6: U-State right after the flash size limit, inside the
++	 * KeeneticOS region (the NAND middle belongs to OpenWrt's UBI) */
++	offset = CONFIG_MTD_NDM_FLASH_SIZE_LIMIT;
+ 
+ 	/* offset must be aligned */
+ 	if (is_power_of_2(mtd->erasesize))
+@@ -349,17 +350,18 @@ int ndmpart_di_init(struct mtd_info *mtd, u32 offset, u32 flash_size_limit)
+ 		goto error_kfree;
+ 	}
+ 
+-	if (!__ndmpart_di_is_magic(di->state.magic)) {
+-		pr_err("unknown magic 0x%08x\n",
+-		       be32_to_cpu(di->state.magic));
+-		ret = -EINVAL;
+-		goto error_kfree;
+-	}
+-
+-	if (di->state.version != NDMPART_DI_U_STATE_VERSION) {
+-		pr_err("unknown version %hhu\n", di->state.version);
+-		ret = -EINVAL;
+-		goto error_kfree;
++	if (!__ndmpart_di_is_magic(di->state.magic) ||
++	    di->state.version != NDMPART_DI_U_STATE_VERSION) {
++		/* Viettel 32x6: no KeenBOOT to create U-State. Boot image 1
++		 * with defaults in RAM; ndm writes it via /proc/dual_image/commit */
++		pr_warn("no U-State (magic 0x%08x, version %hhu), using defaults\n",
++			be32_to_cpu(di->state.magic), di->state.version);
++		memset(&di->state, 0, sizeof(di->state));
++		di->state.magic = cpu_to_be32(NDMPART_DI_U_STATE_MAGIC);
++		di->state.version = NDMPART_DI_U_STATE_VERSION;
++		di->state.boot_active = NDMPART_DI_IMAGE_FIRST;
++		di->state.boot_backup = NDMPART_DI_IMAGE_SECOND;
++		di->state.boot_fails = 0;
+ 	}
+ 
+ 	ret = -ENOMEM;
