@@ -1,0 +1,881 @@
+diff --git a/atf-20240117-bacca82a8/configs/mt7981_keenetic_32x6_defconfig b/atf-20240117-bacca82a8/configs/mt7981_keenetic_32x6_defconfig
+new file mode 100644
+index 000000000..4734fabbd
+--- /dev/null
++++ b/atf-20240117-bacca82a8/configs/mt7981_keenetic_32x6_defconfig
+@@ -0,0 +1,4 @@
++_PLAT_MT7981=y
++_MT7981_BOARD_BGA=y
++_LOG_LEVEL_INFO=y
++CROSS_COMPILE="aarch64-linux-gnu-"
+diff --git a/uboot-mtk-20250711/arch/arm/dts/mt7981-viettel-32x6.dts b/uboot-mtk-20250711/arch/arm/dts/mt7981-viettel-32x6.dts
+new file mode 100644
+index 000000000..7ec5e0d94
+--- /dev/null
++++ b/uboot-mtk-20250711/arch/arm/dts/mt7981-viettel-32x6.dts
+@@ -0,0 +1,121 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++
++/dts-v1/;
++#include "mt7981.dtsi"
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	#address-cells = <1>;
++	#size-cells = <1>;
++	model = "mt7981-viettel_32x6";
++	compatible = "mediatek,mt7981", "mediatek,mt7981-rfb";
++
++	chosen {
++		stdout-path = &uart0;
++		tick-timer = &timer0;
++	};
++
++	config {
++		bootcmd = "mtkboardboot";
++		blink_led = "red:power";
++		system_led = "red:power";
++	};
++
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		button-reset {
++			label = "reset";
++			linux,code = <KEY_RESTART>;
++			gpios = <&pio 1 GPIO_ACTIVE_LOW>;
++		};
++
++		/* Physical WPS button (not mesh) — match Immortal Linux DTS */
++		button-wps {
++			label = "wps";
++			linux,code = <KEY_WPS_BUTTON>;
++			gpios = <&pio 0 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		power_red_led: led-0 {
++			label = "red:power";
++			gpios = <&pio 5 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	memory@40000000 {
++		device_type = "memory";
++		reg = <0x40000000 0x10000000>;
++	};
++
++	bl2_verify {
++		bl2_compatible = "spim-nand";
++	};
++};
++
++&uart0 {
++	status = "okay";
++};
++
++&eth {
++	status = "okay";
++	mediatek,gmac-id = <0>;
++	phy-mode = "2500base-x";
++	mediatek,switch = "auto";
++	reset-gpios = <&pio 39 GPIO_ACTIVE_HIGH>;
++
++	fixed-link {
++		speed = <2500>;
++		full-duplex;
++	};
++};
++
++&pio {
++	spi_flash_pins: spi0-pins-func-1 {
++		mux {
++			function = "flash";
++			groups = "spi0", "spi0_wp_hold";
++		};
++
++		conf-pu {
++			pins = "SPI0_CS", "SPI0_HOLD", "SPI0_WP";
++			drive-strength = <MTK_DRIVE_4mA>;
++			bias-pull-up = <MTK_PUPD_SET_R1R0_11>;
++		};
++
++		conf-pd {
++			pins = "SPI0_CLK", "SPI0_MOSI", "SPI0_MISO";
++			drive-strength = <MTK_DRIVE_4mA>;
++			bias-pull-down = <MTK_PUPD_SET_R1R0_11>;
++		};
++	};
++};
++
++&spi0 {
++	#address-cells = <1>;
++	#size-cells = <0>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi_flash_pins>;
++	status = "okay";
++	must_tx;
++	enhance_timing;
++	dma_ext;
++	ipm_design;
++	support_quad;
++	tick_dly = <2>;
++	sample_sel = <0>;
++
++	spi_nand@0 {
++		compatible = "spi-nand";
++		reg = <0>;
++		spi-max-frequency = <52000000>;
++	};
++};
++
++&watchdog {
++	status = "disabled";
++};
+diff --git a/uboot-mtk-20250711/board/mediatek/Kconfig b/uboot-mtk-20250711/board/mediatek/Kconfig
+index a86f20e4b..496f04fda 100644
+--- a/uboot-mtk-20250711/board/mediatek/Kconfig
++++ b/uboot-mtk-20250711/board/mediatek/Kconfig
+@@ -673,6 +673,31 @@ config MTK_NR3053_UCONFIG_AUTOPROVISION
+ 	  This option is board-specific and must not be enabled for layouts
+ 	  other than the Viettel NR3053 NMBM map.
+ 
++config MTK_NR3053_KEENETIC_DUALIMAGE
++	bool "KeeneticOS dual image (U-State) boot on NR3053"
++	depends on TARGET_MT7981 && ENABLE_NAND_NMBM
++	select MTD
++	select OF_BOARD_SETUP
++	default n
++	help
++	  Add the nr3053_di command. It reads the Keenetic U-State record and
++	  boots Firmware_1 or Firmware_2, the slot the Keenetic kernel maps,
++	  and adds /chosen/dualimage to the kernel device tree. After a
++	  Keenetic firmware update (active = 0) it counts trial boots and goes
++	  back to the backup slot after two failed ones. Raw firmware upload
++	  from failsafe resets an existing U-State to Firmware_1.
++	  Only for the NR3053 Keenetic layout (sdk-patches/402).
++
++config MTK_KEENETIC_DI_LAYOUT_32X6
++	bool "Use the Viettel vAP-32X6V1 KeeneticOS layout for the dual image"
++	depends on MTK_NR3053_KEENETIC_DUALIMAGE
++	default n
++	help
++	  The nr3053_di code uses the Viettel vAP-32X6V1 standalone
++	  KeeneticOS layout (128 MiB NAND, nmbm0 0x7800000): U-State at
++	  0x3c00000, Firmware_1 0x700000, Firmware_2 0x4000000, Config_1
++	  0x2700000, 32 MiB slots (keenetic-32x6, branch 5.1.8).
++
+ config MTK_FIP_SUPPORT
+ 	bool "Enable ATF FIP utilities"
+ 	select MTK_BOARDINFO
+diff --git a/uboot-mtk-20250711/board/mediatek/common/Makefile b/uboot-mtk-20250711/board/mediatek/common/Makefile
+index 00f0e219a..a4ae0b4b0 100644
+--- a/uboot-mtk-20250711/board/mediatek/common/Makefile
++++ b/uboot-mtk-20250711/board/mediatek/common/Makefile
+@@ -35,6 +35,7 @@ obj-$(CONFIG_MTK_BOOTMENU_SNOR_EMMC) += bootmenu_snor_emmc.o
+ obj-$(CONFIG_MTK_BSPCONF_SUPPORT) += bsp_conf.o cmd_bspconf.o
+ obj-$(CONFIG_MTK_BOARDINFO) += board_info.o
+ obj-$(CONFIG_MTK_NR3053_UCONFIG_AUTOPROVISION) += nr3053_uconfig.o
++obj-$(CONFIG_MTK_NR3053_KEENETIC_DUALIMAGE) += nr3053_dualimage.o
+ obj-$(CONFIG_MTK_FIP_SUPPORT) += fip.o fip_helper.o cmd_fip.o
+ obj-$(CONFIG_MTK_UPGRADE_BL2_VERIFY) += bl2_helper.o cmd_bl2.o
+ obj-$(CONFIG_MTK_UPGRADE_FIP_VERIFY) += fip_helper.o
+diff --git a/uboot-mtk-20250711/board/mediatek/common/bootmenu_mtd_common.c b/uboot-mtk-20250711/board/mediatek/common/bootmenu_mtd_common.c
+index d22c5b8a6..1b5fe395b 100644
+--- a/uboot-mtk-20250711/board/mediatek/common/bootmenu_mtd_common.c
++++ b/uboot-mtk-20250711/board/mediatek/common/bootmenu_mtd_common.c
+@@ -9,6 +9,9 @@
+ #include <ubi_uboot.h>
+ #include <linux/string.h>
+ #include <linux/libfdt.h>
++#ifdef CONFIG_MTK_NR3053_KEENETIC_DUALIMAGE
++#include <nr3053_dualimage.h>
++#endif
+ 
+ #include "bootmenu_common.h"
+ #include "colored_print.h"
+@@ -457,11 +460,22 @@ int generic_mtd_write_fw(void *priv, const struct data_part_entry *dpe,
+ 	 * board-specific offset — must NOT run write_ubi_itb_image.
+ 	 */
+ 	if (IS_ENABLED(CONFIG_MTK_KEENETIC_RAW_FIT_FW)) {
++#ifdef CONFIG_MTK_NR3053_KEENETIC_DUALIMAGE
++		/* Write the inactive slot + arm a trial boot (auto fallback) */
++		ret = nr3053_di_write_fw(data, size);
++		if (ret != -ENODEV)
++			return ret;
++#endif
+ 		cprintln(CAUTION, "*** Keenetic raw FIT → MTD 'ubi' ***");
+ 		ret = write_mtd_part("ubi", data, size, true);
+ 		if (ret)
+ 			cprintln(ERROR, "*** Keenetic firmware write failed (%d) ***",
+ 				 ret);
++#ifdef CONFIG_MTK_NR3053_KEENETIC_DUALIMAGE
++		/* New image is in Firmware_1: make U-State point there too */
++		else
++			nr3053_di_reset_after_upgrade();
++#endif
+ 		return ret;
+ 	}
+ 
+diff --git a/uboot-mtk-20250711/board/mediatek/common/nr3053_dualimage.c b/uboot-mtk-20250711/board/mediatek/common/nr3053_dualimage.c
+new file mode 100644
+index 000000000..575b09b76
+--- /dev/null
++++ b/uboot-mtk-20250711/board/mediatek/common/nr3053_dualimage.c
+@@ -0,0 +1,434 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * KeenBOOT-compatible dual image boot for Viettel NR3053 running KeeneticOS.
++ *
++ * The Keenetic kernel (drivers/mtd/ndmpart_di.c, kernel-49 4.9.337-181-4)
++ * reads an 8-byte U-State record at half of the NMBM device and maps
++ * Firmware_1 or Firmware_2 from it.  The bootloader must load the kernel from
++ * the same slot, and /chosen/dualimage turns the kernel side on.
++ *
++ * Protocol, from ndm (libndmCorePack.so, Core::System::DualImage):
++ *  - firmware update (SwitchImage): active = 0, backup = running slot, fails = 0
++ *  - system ready, if running slot != active (CommitImage): active = running, fails = 0
++ * So active == 0 means "trial boot of the slot that is not backup".  ndm never
++ * clears fails for a committed image, so fails is counted only during a trial:
++ * each trial boot adds one; at DI_MAX_FAILS the bootloader goes back to backup.
++ */
++
++#include <command.h>
++#include <fdt_support.h>
++#include <linux/err.h>
++#include <linux/libfdt.h>
++#include <linux/mtd/mtd.h>
++#include <malloc.h>
++#include <mtd.h>
++#include <nr3053_dualimage.h>
++#include <vsprintf.h>
++
++#define DI_MTD_NAME		"nmbm0"
++#ifdef CONFIG_MTK_KEENETIC_DI_LAYOUT_32X6
++/*
++ * Viettel vAP-32X6V1, 128 MiB NAND, nmbm0 = 0x7800000 (keenetic-32x6 branch
++ * 5.1.8, kernel/402 + CONFIG_MTD_NDM_FLASH_SIZE_LIMIT 0x2800000):
++ * Firmware_1 0x700000-0x2700000, Config_1 0x2700000, U-State 0x3c00000,
++ * Firmware_2 0x4000000 (after Reserve, D-State and RF-EEPROM_res).
++ */
++#define DI_U_STATE_OFFSET	0x3c00000
++#define DI_FW1_OFFSET		0x700000
++#define DI_FW2_OFFSET		0x4000000
++#define DI_FIT_READ_SIZE	0x400000
++#define DI_FW_SLOT_SIZE		0x2000000
++#define DI_CFG1_OFFSET		0x2700000
++#else
++/* nmbm0 size / 2, as ndmpart_di.c computes it (logs/v9: U-State 0x7800000) */
++#define DI_U_STATE_OFFSET	0x7800000
++/* Firmware_1/_2 from sdk-patches/402 + ndmpart.c (kernel log v9+) */
++#define DI_FW1_OFFSET		0x600000
++#define DI_FW2_OFFSET		0x7d00000
++#define DI_FIT_READ_SIZE	0x400000
++/* CONFIG_MTD_NDM_FLASH_SIZE_LIMIT 0x2700000 (v27): Firmware_1 0x600000-0x2600000 */
++#define DI_FW_SLOT_SIZE		0x2000000
++/* Config_1 below the flash limit; Config_2 = U-State + Config_1 (ndmpart.c) */
++#define DI_CFG1_OFFSET		0x2600000
++#endif
++#define DI_CFG2_OFFSET		(DI_U_STATE_OFFSET + DI_CFG1_OFFSET)
++#define DI_CFG_SIZE		0x80000
++#define DI_LOAD_ADDR		0x46000000
++
++#define DI_MAGIC		0x55535441	/* "USTA" */
++/* /proc/dual_image/boot_fails accepts 0..2: two trial boots, then fallback */
++#define DI_MAX_FAILS		2
++#define DI_VERSION		1
++
++struct di_u_state {
++	__be32 magic;
++	u8 version;
++	u8 boot_active;
++	u8 boot_backup;
++	u8 boot_fails;
++} __packed;
++
++static struct mtd_info *di_open(void)
++{
++	struct mtd_info *mtd;
++	u64 half;
++
++	mtd_probe_devices();
++	mtd = get_mtd_device_nm(DI_MTD_NAME);
++	if (IS_ERR_OR_NULL(mtd))
++		return NULL;
++
++	half = (mtd->size >> 1) & ~((u64)mtd->erasesize - 1);
++	if (half != DI_U_STATE_OFFSET || mtd->size < DI_FW2_OFFSET + DI_FIT_READ_SIZE) {
++		printf("DualImage: %s size 0x%llx does not match the Keenetic layout\n",
++		       DI_MTD_NAME, (unsigned long long)mtd->size);
++		put_mtd_device(mtd);
++		return NULL;
++	}
++
++	return mtd;
++}
++
++/* Same bounds as /proc/dual_image setters in ndmpart_di.c */
++static bool di_read(struct mtd_info *mtd, struct di_u_state *st)
++{
++	size_t retlen = 0;
++
++	if (mtd_read(mtd, DI_U_STATE_OFFSET, sizeof(*st), &retlen, (u8 *)st) < 0 ||
++	    retlen != sizeof(*st))
++		return false;
++
++	return be32_to_cpu(st->magic) == DI_MAGIC && st->version == DI_VERSION &&
++	       st->boot_active <= 2 && st->boot_backup >= 1 &&
++	       st->boot_backup <= 2 && st->boot_fails <= 2;
++}
++
++/* Copy of the boot_current rule in ndmpart_di_init() */
++static int di_current(const struct di_u_state *st)
++{
++	if (st->boot_active)
++		return st->boot_active == 1 ? 1 : 2;
++
++	return st->boot_backup == 1 ? 2 : 1;
++}
++
++static bool di_slot_has_fit(struct mtd_info *mtd, int slot)
++{
++	u8 hdr[64];
++	size_t retlen = 0;
++	loff_t off = slot == 1 ? DI_FW1_OFFSET : DI_FW2_OFFSET;
++
++	if (mtd_read(mtd, off, sizeof(hdr), &retlen, hdr) < 0 ||
++	    retlen != sizeof(hdr))
++		return false;
++
++	return fdt_magic(hdr) == FDT_MAGIC;
++}
++
++/* Like __ndmpart_di_commit(): keep the rest of the page, rewrite one page */
++static int di_write(struct mtd_info *mtd, const struct di_u_state *st)
++{
++	struct erase_info erase = {};
++	struct di_u_state check;
++	size_t retlen = 0;
++	u8 *page;
++	int ret;
++
++	page = malloc(mtd->writesize);
++	if (!page)
++		return -ENOMEM;
++
++	ret = mtd_read(mtd, DI_U_STATE_OFFSET, mtd->writesize, &retlen, page);
++	if (ret < 0 || retlen != mtd->writesize)
++		goto fail;
++	memcpy(page, st, sizeof(*st));
++
++	erase.mtd = mtd;
++	erase.addr = DI_U_STATE_OFFSET;
++	erase.len = mtd->erasesize;
++	ret = mtd_erase(mtd, &erase);
++	if (ret)
++		goto fail;
++	ret = mtd_write(mtd, DI_U_STATE_OFFSET, mtd->writesize, &retlen, page);
++	if (ret < 0 || retlen != mtd->writesize || !di_read(mtd, &check) ||
++	    memcmp(&check, st, sizeof(check)))
++		goto fail;
++
++	free(page);
++	return 0;
++
++fail:
++	free(page);
++	printf("DualImage: U-State write failed (%d)\n", ret);
++	return ret < 0 ? ret : -EIO;
++}
++
++int nr3053_di_reset_after_upgrade(void)
++{
++	static const struct di_u_state def = {
++		.magic = cpu_to_be32(DI_MAGIC), .version = DI_VERSION,
++		.boot_active = 1, .boot_backup = 1, .boot_fails = 0,
++	};
++	struct di_u_state st;
++	struct mtd_info *mtd;
++	int ret = 0;
++
++	mtd = di_open();
++	if (!mtd)
++		return -ENODEV;
++
++	/* No valid record: not a Keenetic layout yet, never write here. */
++	if (di_read(mtd, &st) && memcmp(&st, &def, sizeof(def))) {
++		ret = di_write(mtd, &def);
++		if (!ret)
++			printf("DualImage: U-State reset to Firmware_1 after upgrade\n");
++	}
++
++	put_mtd_device(mtd);
++	return ret;
++}
++
++/*
++ * ndm keeps one config per slot and copies it only on its own SwitchImage, so a
++ * failsafe upgrade must carry the running config over, or the new slot boots
++ * with defaults (Config_2 is empty until then).  An empty source is not copied.
++ */
++static int di_copy_config(struct mtd_info *mtd, int from, int to)
++{
++	loff_t src = from == 1 ? DI_CFG1_OFFSET : DI_CFG2_OFFSET;
++	loff_t dst = to == 1 ? DI_CFG1_OFFSET : DI_CFG2_OFFSET;
++	struct erase_info erase = {};
++	size_t retlen = 0, i;
++	u8 *buf;
++	int ret;
++
++	buf = malloc(DI_CFG_SIZE);
++	if (!buf)
++		return -ENOMEM;
++	ret = mtd_read(mtd, src, DI_CFG_SIZE, &retlen, buf);
++	if (ret < 0 || retlen != DI_CFG_SIZE)
++		goto fail;
++	for (i = 0; i < DI_CFG_SIZE && buf[i] == 0xff; i++)
++		;
++	if (i == DI_CFG_SIZE) {
++		printf("DualImage: Config_%d is empty, not copied\n", from);
++		free(buf);
++		return 0;
++	}
++
++	erase.mtd = mtd;
++	erase.addr = dst;
++	erase.len = DI_CFG_SIZE;
++	ret = mtd_erase(mtd, &erase);
++	if (ret)
++		goto fail;
++	ret = mtd_write(mtd, dst, DI_CFG_SIZE, &retlen, buf);
++	if (ret < 0 || retlen != DI_CFG_SIZE)
++		goto fail;
++
++	printf("DualImage: Config_%d copied to Config_%d\n", from, to);
++	free(buf);
++	return 0;
++
++fail:
++	free(buf);
++	return ret < 0 ? ret : -EIO;
++}
++
++/*
++ * Failsafe upgrade into the slot that is not known-good, then ask for a trial
++ * boot exactly like ndm's SwitchImage (active = 0, backup = known-good slot).
++ * If the new image does not reach SystemReady (ndm CommitImage) within
++ * DI_MAX_FAILS boots, di_select() goes back to the old slot.
++ * Returns -ENODEV when the layout does not match, so the caller can fall back.
++ */
++int nr3053_di_write_fw(const void *data, size_t size)
++{
++	struct di_u_state st;
++	struct erase_info erase = {};
++	struct mtd_info *mtd;
++	size_t retlen = 0, full;
++	loff_t off;
++	u8 *tail = NULL;
++	int good, target, ret;
++
++	mtd = di_open();
++	if (!mtd)
++		return -ENODEV;
++
++	if (size < sizeof(u32) * 2 || fdt_magic(data) != FDT_MAGIC) {
++		printf("DualImage: upload is not a FIT image\n");
++		ret = -EINVAL;
++		goto out;
++	}
++	if (size > DI_FW_SLOT_SIZE) {
++		printf("DualImage: image 0x%zx exceeds slot 0x%x\n", size,
++		       DI_FW_SLOT_SIZE);
++		ret = -EFBIG;
++		goto out;
++	}
++
++	/* Known-good slot: committed one, or backup while a trial is pending */
++	if (di_read(mtd, &st))
++		good = st.boot_active ? st.boot_active : st.boot_backup;
++	else
++		good = 1;
++	target = 3 - good;
++	off = target == 1 ? DI_FW1_OFFSET : DI_FW2_OFFSET;
++	printf("DualImage: writing Firmware_%d (0x%llx), keeping Firmware_%d\n",
++	       target, (unsigned long long)off, good);
++
++	erase.mtd = mtd;
++	erase.addr = off;
++	erase.len = DI_FW_SLOT_SIZE;
++	ret = mtd_erase(mtd, &erase);
++	if (ret)
++		goto out;
++
++	full = size & ~((size_t)mtd->writesize - 1);
++	if (full) {
++		ret = mtd_write(mtd, off, full, &retlen, data);
++		if (ret < 0 || retlen != full)
++			goto out_io;
++	}
++	if (size > full) {
++		tail = malloc(mtd->writesize);
++		if (!tail) {
++			ret = -ENOMEM;
++			goto out;
++		}
++		memset(tail, 0xff, mtd->writesize);
++		memcpy(tail, (const u8 *)data + full, size - full);
++		ret = mtd_write(mtd, off + full, mtd->writesize, &retlen, tail);
++		if (ret < 0 || retlen != mtd->writesize)
++			goto out_io;
++	}
++
++	ret = di_copy_config(mtd, good, target);
++	if (ret)
++		goto out;
++
++	st.magic = cpu_to_be32(DI_MAGIC);
++	st.version = DI_VERSION;
++	st.boot_active = 0;
++	st.boot_backup = good;
++	st.boot_fails = 0;
++	ret = di_write(mtd, &st);
++	if (!ret)
++		printf("DualImage: trial boot of Firmware_%d armed, fallback Firmware_%d\n",
++		       target, good);
++	goto out;
++
++out_io:
++	if (!ret)
++		ret = -EIO;
++out:
++	if (ret)
++		printf("DualImage: firmware write failed (%d)\n", ret);
++	free(tail);
++	put_mtd_device(mtd);
++	return ret;
++}
++
++/*
++ * Pick the slot to boot and record a trial boot.  Returns 1 or 2.
++ * With dry_run nothing is written (for "print").
++ */
++static int di_select(struct mtd_info *mtd, bool dry_run)
++{
++	struct di_u_state st;
++	int slot;
++
++	if (!di_read(mtd, &st)) {
++		printf("DualImage: no valid U-State -> Firmware_1\n");
++		return 1;
++	}
++
++	printf("DualImage: active %u, backup %u, fails %u\n",
++	       st.boot_active, st.boot_backup, st.boot_fails);
++
++	slot = di_current(&st);
++
++	if (st.boot_active) {
++		if (di_slot_has_fit(mtd, slot) || !di_slot_has_fit(mtd, 3 - slot))
++			return slot;
++		/* The kernel maps the slot from U-State, so it must follow */
++		printf("DualImage: Firmware_%d has no FIT, using Firmware_%d\n",
++		       slot, 3 - slot);
++		slot = 3 - slot;
++		st.boot_active = slot;
++		st.boot_fails = 0;
++	} else if (st.boot_fails >= DI_MAX_FAILS || !di_slot_has_fit(mtd, slot)) {
++		/* Trial boot of the new image (active == 0) failed */
++		printf("DualImage: Firmware_%d failed %u trial boot(s), back to Firmware_%u\n",
++		       slot, st.boot_fails, st.boot_backup);
++		st.boot_active = st.boot_backup;
++		st.boot_fails = 0;
++		slot = st.boot_backup;
++	} else {
++		st.boot_fails++;
++		printf("DualImage: trial boot %u/%u of Firmware_%d\n",
++		       st.boot_fails, DI_MAX_FAILS, slot);
++	}
++
++	if (!dry_run && di_write(mtd, &st))
++		printf("DualImage: continuing without saving U-State\n");
++
++	return slot;
++}
++
++int ft_board_setup(void *blob, struct bd_info *bd)
++{
++	int chosen = fdt_find_or_add_subnode(blob, 0, "chosen");
++	u8 one = 1;
++
++	if (chosen < 0)
++		return chosen;
++
++	/* 1-byte property: the kernel reads it with of_property_read_u8() */
++	return fdt_setprop(blob, chosen, "dualimage", &one, sizeof(one));
++}
++
++static int do_nr3053_di(struct cmd_tbl *cmdtp, int flag, int argc,
++			char *const argv[])
++{
++	struct mtd_info *mtd;
++	char cmd[128];
++	int slot;
++
++	if (argc != 2)
++		return CMD_RET_USAGE;
++
++	if (!strcmp(argv[1], "reset"))
++		return nr3053_di_reset_after_upgrade() ? CMD_RET_FAILURE :
++							 CMD_RET_SUCCESS;
++
++	if (strcmp(argv[1], "print") && strcmp(argv[1], "boot"))
++		return CMD_RET_USAGE;
++
++	mtd = di_open();
++	if (!mtd)
++		return CMD_RET_FAILURE;
++
++	slot = di_select(mtd, !strcmp(argv[1], "print"));
++	put_mtd_device(mtd);
++	printf("DualImage: -> Firmware_%d\n", slot);
++
++	if (!strcmp(argv[1], "print"))
++		return CMD_RET_SUCCESS;
++
++	snprintf(cmd, sizeof(cmd),
++		 "mtd read %s 0x%x 0x%x 0x%x && bootm 0x%x#config@1",
++		 DI_MTD_NAME, DI_LOAD_ADDR,
++		 slot == 1 ? DI_FW1_OFFSET : DI_FW2_OFFSET, DI_FIT_READ_SIZE,
++		 DI_LOAD_ADDR);
++
++	return run_command(cmd, 0) ? CMD_RET_FAILURE : CMD_RET_SUCCESS;
++}
++
++U_BOOT_CMD(nr3053_di, 2, 0, do_nr3053_di,
++	   "KeeneticOS dual image (U-State) on NR3053",
++	   "print - show U-State and the slot that would boot (no write)\n"
++	   "nr3053_di boot  - boot the slot the Keenetic kernel will map\n"
++	   "nr3053_di reset - set U-State to Firmware_1 (only if a record exists)"
++);
+diff --git a/uboot-mtk-20250711/board/mediatek/common/nr3053_uconfig.c b/uboot-mtk-20250711/board/mediatek/common/nr3053_uconfig.c
+index e856bb527..93d7c79fe 100644
+--- a/uboot-mtk-20250711/board/mediatek/common/nr3053_uconfig.c
++++ b/uboot-mtk-20250711/board/mediatek/common/nr3053_uconfig.c
+@@ -401,10 +401,20 @@ out:
+ 	return ret;
+ }
+ 
++/*
++ * U-Boot writes U-Config as a 128 KiB env block, but KeeneticOS ndm rewrites the
++ * active slot as a 16 KiB env (CRC over 0x4000 - 4, adds lock=yes, values unchanged).
++ * Accept both, otherwise every boot "repairs" the active slot that ndm rewrote.
++ */
++#define NR_NDM_ENV_SIZE			0x004000
++
+ static bool nr_env_block_crc_ok(const u8 block[NR_ENV_BLOCK_SIZE])
+ {
+-	return get_unaligned_le32(block) ==
+-		crc32(0, block + sizeof(u32), NR_ENV_DATA_SIZE);
++	u32 stored = get_unaligned_le32(block);
++
++	return stored == crc32(0, block + sizeof(u32), NR_ENV_DATA_SIZE) ||
++	       stored == crc32(0, block + sizeof(u32),
++			       NR_NDM_ENV_SIZE - sizeof(u32));
+ }
+ 
+ static bool nr_env_get(const u8 block[NR_ENV_BLOCK_SIZE], const char *key,
+diff --git a/uboot-mtk-20250711/configs/mt7981_keenetic_32x6_defconfig b/uboot-mtk-20250711/configs/mt7981_keenetic_32x6_defconfig
+new file mode 100644
+index 000000000..1fa0e5500
+--- /dev/null
++++ b/uboot-mtk-20250711/configs/mt7981_keenetic_32x6_defconfig
+@@ -0,0 +1,135 @@
++CONFIG_ARM=y
++CONFIG_SYS_HAS_NONCACHED_MEMORY=y
++CONFIG_POSITION_INDEPENDENT=y
++CONFIG_ARCH_MEDIATEK=y
++CONFIG_TEXT_BASE=0x41e00000
++CONFIG_SYS_MALLOC_F_LEN=0x4000
++CONFIG_NR_DRAM_BANKS=1
++CONFIG_ENV_SIZE=0x20000
++CONFIG_ENV_OFFSET=0x0
++CONFIG_DEFAULT_DEVICE_TREE="mt7981-viettel-32x6"
++CONFIG_SYS_PROMPT="MT7981> "
++CONFIG_TARGET_MT7981=y
++CONFIG_DEBUG_UART_BASE=0x11002000
++CONFIG_DEBUG_UART_CLOCK=40000000
++CONFIG_SYS_LOAD_ADDR=0x46000000
++CONFIG_DEBUG_UART=y
++CONFIG_MEDIATEK_BOOTMENU=y
++CONFIG_MEDIATEK_BOOTMENU_DELAY=3
++CONFIG_MTK_WEB_FAILSAFE=y
++CONFIG_MTK_WEB_FAILSAFE_AFTER_BOOT_FAILURE=y
++# Do NOT auto-httpd after mtkboardboot UBI fail — Keenetic FIT is raw in "ubi".
++# Web fw upload / mtkupgrade fw → raw mtd write "ubi" (NOT UBI volumes).
++CONFIG_MTK_KEENETIC_RAW_FIT_FW=y
++CONFIG_MTK_NR3053_KEENETIC_DUALIMAGE=y
++CONFIG_MTK_KEENETIC_DI_LAYOUT_32X6=y
++# Failsafe Web UI (explicit — do not rely on silent Kconfig defaults alone).
++CONFIG_WEBUI_FAILSAFE_ADVANCED=y
++CONFIG_WEBUI_FAILSAFE_UI_BOOTSTRAP=y
++CONFIG_WEBUI_FAILSAFE_I18N=y
++CONFIG_WEBUI_FAILSAFE_BACKUP=y
++CONFIG_WEBUI_FAILSAFE_FLASH=y
++CONFIG_WEBUI_FAILSAFE_ENV=y
++# Generic env variables do not configure KeeneticOS/U-Config; hide editor UI.
++# CONFIG_WEBUI_FAILSAFE_ENV_EDITOR is not set
++CONFIG_WEBUI_FAILSAFE_CONSOLE=y
++# Factory = RF-EEPROM/cal — hide Web upload (restore via Flash editor / UART only).
++# CONFIG_WEBUI_FAILSAFE_FACTORY is not set
++# Build variant string may be overwritten by build.sh VARIANT=default → "default".
++# CONFIG_WEBUI_FAILSAFE_UBI is not set
++# CONFIG_WEBUI_FAILSAFE_SIMG is not set
++# CONFIG_WEBUI_FAILSAFE_NAND_RAW is not set
++CONFIG_MTK_UBI_SUPPORT=y
++CONFIG_MTK_UPGRADE_BL2_VERIFY=y
++# CONFIG_MTK_UPGRADE_IMAGE_VERIFY is not set
++CONFIG_ENABLE_NAND_NMBM=y
++CONFIG_FIT=y
++# Menu still shown, but default entry is "nr3053_autoboot". It runs the
++# U-Config preflight before the saved bootcmd, including with legacy env.
++CONFIG_AUTOBOOT_MENU_SHOW=y
++CONFIG_AUTOBOOT_MENU_MTK_SHOW=y
++CONFIG_BOOTDELAY=3
++CONFIG_USE_BOOTCOMMAND=y
++# Boots the U-State slot (Firmware_1/_2) the Keenetic kernel maps.
++CONFIG_BOOTCOMMAND="nr3053_di boot"
++CONFIG_DEFAULT_FDT_FILE="mt7981-spim-nand-rfb"
++CONFIG_LOGLEVEL=7
++CONFIG_LOG=y
++CONFIG_HUSH_PARSER=y
++CONFIG_SYS_CBSIZE=512
++CONFIG_SYS_PBSIZE=1049
++# CONFIG_BOOTM_NETBSD is not set
++# CONFIG_BOOTM_PLAN9 is not set
++# CONFIG_BOOTM_RTEMS is not set
++# CONFIG_BOOTM_VXWORKS is not set
++# CONFIG_CMD_ELF is not set
++CONFIG_CMD_MEMINFO=y
++# CONFIG_CMD_UNLZ4 is not set
++# CONFIG_CMD_UNZIP is not set
++CONFIG_CMD_GPIO=y
++CONFIG_CMD_GPIO_READ=y
++CONFIG_CMD_PWM=y
++CONFIG_CMD_MTD=y
++CONFIG_CMD_NMBM=y
++CONFIG_CMD_TFTPPUT=y
++CONFIG_CMD_PING=y
++CONFIG_CMD_SMC=y
++CONFIG_CMD_MTDPARTS=y
++CONFIG_MTDIDS_DEFAULT="nmbm0=nmbm0"
++# Viettel places of BL2/Factory/FIP; "ubi" = Firmware_1 (raw FIT fallback), rest = KeeneticOS
++CONFIG_MTDPARTS_DEFAULT="nmbm0:1024k(bl2),512k(U-Config),2048k(Factory),2048k(fip),512k(u-boot-env),1024k(RF-EEPROM),32768k(ubi),-(keenetic)"
++CONFIG_CMD_GL_BTN=y
++CONFIG_OF_EMBED=y
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_MTD=y
++CONFIG_ENV_MTD_NAME="u-boot-env"
++CONFIG_ENV_SIZE_REDUND=0x80000
++CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_USE_IPADDR=y
++CONFIG_IPADDR="192.168.1.1"
++CONFIG_USE_NETMASK=y
++CONFIG_NETMASK="255.255.255.0"
++CONFIG_USE_SERVERIP=y
++CONFIG_SERVERIP="192.168.1.2"
++CONFIG_PROT_TCP=y
++CONFIG_REGMAP=y
++CONFIG_SYSCON=y
++CONFIG_BUTTON=y
++CONFIG_BUTTON_GPIO=y
++CONFIG_CLK=y
++# CONFIG_I2C is not set
++CONFIG_LED=y
++CONFIG_LED_BLINK=y
++CONFIG_LED_GPIO=y
++# CONFIG_MMC is not set
++CONFIG_DM_MTD=y
++CONFIG_MTD_SPI_NAND=y
++CONFIG_PHY_FIXED=y
++CONFIG_MEDIATEK_ETH=y
++CONFIG_PINCTRL=y
++CONFIG_PINCONF=y
++CONFIG_PINCTRL_MT7981=y
++CONFIG_POWER_DOMAIN=y
++CONFIG_MTK_POWER_DOMAIN=y
++CONFIG_DM_REGULATOR=y
++CONFIG_DM_REGULATOR_FIXED=y
++CONFIG_DM_REGULATOR_GPIO=y
++CONFIG_DM_PWM=y
++CONFIG_PWM_MTK=y
++CONFIG_DM_SERIAL=y
++CONFIG_MTK_SERIAL=y
++CONFIG_SPI=y
++CONFIG_DM_SPI=y
++CONFIG_MTK_SPIM=y
++CONFIG_TIMER=y
++CONFIG_MTK_TIMER=y
++CONFIG_HEXDUMP=y
++CONFIG_MD5=y
++# CONFIG_CMD_XIMG is not set
++CONFIG_CMD_BOOTMENU=y
++CONFIG_ENV_MTD_DEV="u-boot-env"
++# CONFIG_DM_I2C is not set
++# CONFIG_I2C_SET_DEFAULT_BUS_NUM is not set
++# CONFIG_PCIE_MEDIATEK is not set
++# CONFIG_EFI_LOADER is not set
+diff --git a/uboot-mtk-20250711/configs/mt7981_keenetic_nr3053_defconfig b/uboot-mtk-20250711/configs/mt7981_keenetic_nr3053_defconfig
+index 6b197f26b..682905d31 100644
+--- a/uboot-mtk-20250711/configs/mt7981_keenetic_nr3053_defconfig
++++ b/uboot-mtk-20250711/configs/mt7981_keenetic_nr3053_defconfig
+@@ -22,6 +22,7 @@ CONFIG_MTK_WEB_FAILSAFE=y
+ # Web fw upload / mtkupgrade fw → raw mtd write "ubi" (NOT UBI volumes).
+ CONFIG_MTK_KEENETIC_RAW_FIT_FW=y
+ CONFIG_MTK_NR3053_UCONFIG_AUTOPROVISION=y
++CONFIG_MTK_NR3053_KEENETIC_DUALIMAGE=y
+ # Failsafe Web UI (explicit — do not rely on silent Kconfig defaults alone).
+ CONFIG_WEBUI_FAILSAFE_ADVANCED=y
+ CONFIG_WEBUI_FAILSAFE_UI_BOOTSTRAP=y
+@@ -50,7 +51,8 @@ CONFIG_AUTOBOOT_MENU_SHOW=y
+ CONFIG_AUTOBOOT_MENU_MTK_SHOW=y
+ CONFIG_BOOTDELAY=3
+ CONFIG_USE_BOOTCOMMAND=y
+-CONFIG_BOOTCOMMAND="mtd read ubi 0x46000000 0x0 0x400000; bootm 0x46000000#config@1"
++# Boots the U-State slot (Firmware_1/_2) the Keenetic kernel maps.
++CONFIG_BOOTCOMMAND="nr3053_di boot"
+ CONFIG_DEFAULT_FDT_FILE="mt7981-spim-nand-rfb"
+ CONFIG_LOGLEVEL=7
+ CONFIG_LOG=y
+diff --git a/uboot-mtk-20250711/drivers/mtd/nand/spi/winbond.c b/uboot-mtk-20250711/drivers/mtd/nand/spi/winbond.c
+index c6733a921..7528f70af 100644
+--- a/uboot-mtk-20250711/drivers/mtd/nand/spi/winbond.c
++++ b/uboot-mtk-20250711/drivers/mtd/nand/spi/winbond.c
+@@ -340,7 +340,7 @@ static const struct spinand_info winbond_spinand_table[] = {
+ 		     SPINAND_ECCINFO(&w25n01jw_ooblayout, w25w35nxxjw_ecc_get_status)),
+ 	SPINAND_INFO("W25N01KV", /* 3.3V */
+ 		     SPINAND_ID(SPINAND_READID_METHOD_OPCODE_DUMMY, 0xae, 0x21),
+-		     NAND_MEMORG(1, 2048, 96, 64, 1024, 20, 1, 1, 1),
++		     NAND_MEMORG(1, 2048, 64, 64, 1024, 20, 1, 1, 1),
+ 		     NAND_ECCREQ(4, 512),
+ 		     SPINAND_INFO_OP_VARIANTS(&read_cache_variants,
+ 					      &write_cache_variants,
+diff --git a/uboot-mtk-20250711/include/nr3053_dualimage.h b/uboot-mtk-20250711/include/nr3053_dualimage.h
+new file mode 100644
+index 000000000..56441ea25
+--- /dev/null
++++ b/uboot-mtk-20250711/include/nr3053_dualimage.h
+@@ -0,0 +1,10 @@
++/* SPDX-License-Identifier: GPL-2.0+ */
++#ifndef __NR3053_DUALIMAGE_H__
++#define __NR3053_DUALIMAGE_H__
++
++#include <linux/types.h>
++
++int nr3053_di_reset_after_upgrade(void);
++int nr3053_di_write_fw(const void *data, size_t size);
++
++#endif /* __NR3053_DUALIMAGE_H__ */

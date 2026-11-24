@@ -1,0 +1,31 @@
+--- a/drivers/mtd/ndmpart.c	2026-11-20 09:50:05.286353843 +0000
++++ b/drivers/mtd/ndmpart.c	2026-11-20 09:50:05.325558288 +0000
+@@ -516,8 +516,27 @@
+ 	parts[PART_RF_EEPROM].offset = parts_offset_end(PART_U_CONFIG);
+ 	parts[PART_RF_EEPROM].size = parts_size_default_get(PART_RF_EEPROM, m);
+ 
++	/*
++	 * Viettel vAP-32X6V1 (128 MiB SPI-NAND, NMBM: nmbm0 = 120 MiB), the
++	 * Viettel BL2/Factory/FIP places are kept:
++	 *   0x0000000 BL2 1M        0x0100000 U-Config 512K
++	 *   0x0180000 Factory 2M    (not mapped: RF-EEPROM is a copy with the
++	 *                            LAN/WAN MACs at 0x4/0xa)
++	 *   0x0380000 FIP 2M        0x0580000 u-boot-env 512K (not mapped)
++	 *   0x0600000 RF-EEPROM 1M  0x0700000 Firmware_1 ...
++	 * Image 2 starts at the U-State (nmbm0 / 2 = 0x3c00000).
++	 */
++	parts[PART_PRELOADER].offset = 0;
++	parts[PART_PRELOADER].size = 0x100000;
++	parts[PART_U_BOOT].offset = 0x380000;
++	parts[PART_U_BOOT].size = 0x200000;
++	parts[PART_U_CONFIG].offset = 0x100000;
++	parts[PART_U_CONFIG].size = 0x80000;
++	parts[PART_RF_EEPROM].offset = 0x600000;
++	parts[PART_RF_EEPROM].size = 0x100000;
++
+ #ifdef PLACE_OS_ON_MTD
+-	parts[PART_KERNEL_1].offset = parts_offset_end(PART_RF_EEPROM);
++	parts[PART_KERNEL_1].offset = 0x700000;
+ 	parts[PART_FIRMWARE_1].offset = parts[PART_KERNEL_1].offset;
+ 
+ 	if (CONFIG_MTD_NDM_CONFIG_SIZE)
