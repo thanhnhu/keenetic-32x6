@@ -1,0 +1,2 @@
+/bin/busybox sh /etc/dbg.sh
+kill -TERM 1

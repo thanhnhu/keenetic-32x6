@@ -1,0 +1,83 @@
+diff --git a/drivers/mtd/ndmpart.c b/drivers/mtd/ndmpart.c
+index edbcf578..8eae7b32 100644
+--- a/drivers/mtd/ndmpart.c
++++ b/drivers/mtd/ndmpart.c
+@@ -433,10 +433,8 @@ static int create_mtd_partitions(struct mtd_info *m,
+ #endif
+ 	bool use_dump = CONFIG_MTD_NDM_DUMP_SIZE ? true : false;
+ 
+-#ifdef CONFIG_NMBM_MTD
+-	if (!is_nmbm_mtd(m))
+-		return 0;
+-#endif /* CONFIG_NMBM_MTD */
++	/* Viettel 32x6: no NMBM, the raw SPI-NAND is partitioned (it is
++	 * shared with the bootloader and OpenWrt's UBI) */
+ 
+ #ifdef CONFIG_AIROHA_BMT
+ 	airoha_bmt_attach(m);
+@@ -504,6 +502,9 @@ static int create_mtd_partitions(struct mtd_info *m,
+ 			return ret;
+ 
+ 		di_current = (u8)ret;
++		if (di_current != NDMPART_DI_IMAGE_FIRST)
++			pr_warn("Viettel 32x6: single image, booting image 1\n");
++		di_current = NDMPART_DI_IMAGE_FIRST;
+ 	}
+ 
+ 	/* Fill known fields */
+@@ -516,8 +517,27 @@ static int create_mtd_partitions(struct mtd_info *m,
+ 	parts[PART_RF_EEPROM].offset = parts_offset_end(PART_U_CONFIG);
+ 	parts[PART_RF_EEPROM].size = parts_size_default_get(PART_RF_EEPROM, m);
+ 
++	/*
++	 * Viettel vAP-32X6V1 (128 MiB SPI-NAND, Multi Firmware U-Boot):
++	 *   0x0000000 BL2          0x0100000 U-Config (unused u-boot-env area)
++	 *   0x0180000 Factory      (not mapped: KeeneticOS gets a copy, below)
++	 *   0x0380000 FIP          0x0580000 OpenWrt UBI ... 0x6000000
++	 *   0x6000000 Firmware_1   0x7e00000 Config_1     0x7e80000 Dump
++	 *   0x7f00000 U-State      0x7f60000 RF-EEPROM (Factory 0x0-0xa0000
++	 *                                   copy with the LAN/WAN MACs at 0x4/0xa)
++	 * The flash size limit (CONFIG_MTD_NDM_FLASH_SIZE_LIMIT) is 0x7f00000.
++	 */
++	parts[PART_PRELOADER].offset = 0;
++	parts[PART_PRELOADER].size = 0x100000;
++	parts[PART_U_BOOT].offset = 0x380000;
++	parts[PART_U_BOOT].size = 0x200000;
++	parts[PART_U_CONFIG].offset = 0x100000;
++	parts[PART_U_CONFIG].size = 0x80000;
++	parts[PART_RF_EEPROM].offset = 0x7f60000;
++	parts[PART_RF_EEPROM].size = 0xa0000;
++
+ #ifdef PLACE_OS_ON_MTD
+-	parts[PART_KERNEL_1].offset = parts_offset_end(PART_RF_EEPROM);
++	parts[PART_KERNEL_1].offset = 0x6000000;
+ 	parts[PART_FIRMWARE_1].offset = parts[PART_KERNEL_1].offset;
+ 
+ 	if (CONFIG_MTD_NDM_CONFIG_SIZE)
+@@ -549,7 +569,7 @@ static int create_mtd_partitions(struct mtd_info *m,
+ 					      parts[PART_CONFIG_1].size;
+ 	}
+ 
+-#ifdef CONFIG_MTD_NDM_EXTENDED_STORAGE
++#if 0	/* Viettel 32x6: U-State and RF-EEPROM follow the flash limit */
+ 	if (m->size > flash_size_lim) {
+ 		parts[PART_STORAGE_A].offset = flash_size_lim;
+ 		parts[PART_STORAGE_A].size = m->size - flash_size_lim;
+@@ -590,6 +610,17 @@ static int create_mtd_partitions(struct mtd_info *m,
+ #endif
+ 
+ 	if (u_state_offset != NDMPART_DI_NO_OFFSET) {
++		/* Viettel 32x6: one image only, U-State is a single block */
++		parts[PART_U_STATE].size = m->erasesize;
++#ifdef PLACE_OS_ON_MTD
++		parts[PART_CONFIG_1].name = "Config_1";
++		parts[PART_FIRMWARE_1].name = "Firmware_1";
++		parts[PART_KERNEL_1].name = "Kernel_1";
++		parts[PART_ROOTFS_1].name = "RootFS_1";
++#endif
++	}
++
++	if (0) {
+ 		/* U_STATE parts already calculated at this place */
+ 		parts[PART_RESERVE].offset = parts_offset_end(PART_U_STATE);
+ 		parts[PART_RESERVE].size = parts_size_default_get(PART_RESERVE, m);

@@ -1,0 +1,25 @@
+--- a/drivers/mtd/ndmpart.c
++++ b/drivers/mtd/ndmpart.c
+@@ -617,6 +617,22 @@
+ 		parts[PART_FIRMWARE_1].name = "Firmware_1";
+ 		parts[PART_KERNEL_1].name = "Kernel_1";
+ 		parts[PART_ROOTFS_1].name = "RootFS_1";
++		/*
++		 * ndm needs the dual "Config" partition (Backup::ConfigStorage: no
++		 * "Config" dual partition found) and "D-State" (Update::Manager: no
++		 * state partition found, UPDS.NDM); without them it exits. Config_2
++		 * takes the Dump area, Dump and D-State share the free blocks between
++		 * U-State and RF-EEPROM.
++		 */
++		parts[PART_CONFIG_2].skip = false;
++		parts[PART_CONFIG_2].offset = parts[PART_DUMP].offset;
++		parts[PART_CONFIG_2].size = parts[PART_CONFIG_1].size;
++		parts[PART_DUMP].offset = parts_offset_end(PART_U_STATE);
++		parts[PART_DUMP].size = m->erasesize;
++		parts[PART_U_CONFIG_RES].skip = false;
++		parts[PART_U_CONFIG_RES].offset = parts_offset_end(PART_DUMP);
++		parts[PART_U_CONFIG_RES].size = parts[PART_RF_EEPROM].offset -
++						parts[PART_U_CONFIG_RES].offset;
+ #endif
+ 	}
+ 
