@@ -1,0 +1,33 @@
+--- a/drivers/mtd/ndmpart_di.c	2026-11-20 09:50:05.292918950 +0000
++++ b/drivers/mtd/ndmpart_di.c	2026-11-20 09:50:05.325624183 +0000
+@@ -349,17 +349,19 @@
+ 		goto error_kfree;
+ 	}
+ 
+-	if (!__ndmpart_di_is_magic(di->state.magic)) {
+-		pr_err("unknown magic 0x%08x\n",
+-		       be32_to_cpu(di->state.magic));
+-		ret = -EINVAL;
+-		goto error_kfree;
+-	}
+-
+-	if (di->state.version != NDMPART_DI_U_STATE_VERSION) {
+-		pr_err("unknown version %hhu\n", di->state.version);
+-		ret = -EINVAL;
+-		goto error_kfree;
++	if (!__ndmpart_di_is_magic(di->state.magic) ||
++	    di->state.version != NDMPART_DI_U_STATE_VERSION) {
++		/* Viettel 32x6: no U-State yet (fresh install). Boot image 1
++		 * with defaults in RAM; ndm writes it via /proc/dual_image/commit
++		 * and the U-Boot dual image code keeps it afterwards. */
++		pr_warn("no U-State (magic 0x%08x, version %hhu), using defaults\n",
++			be32_to_cpu(di->state.magic), di->state.version);
++		memset(&di->state, 0, sizeof(di->state));
++		di->state.magic = cpu_to_be32(NDMPART_DI_U_STATE_MAGIC);
++		di->state.version = NDMPART_DI_U_STATE_VERSION;
++		di->state.boot_active = NDMPART_DI_IMAGE_FIRST;
++		di->state.boot_backup = NDMPART_DI_IMAGE_SECOND;
++		di->state.boot_fails = 0;
+ 	}
+ 
+ 	ret = -ENOMEM;

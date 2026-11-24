@@ -1,0 +1,18 @@
+W25N01KV: report 64 OOB bytes, as the Viettel stock BL2 does
+
+The stock BL2 takes the spare size from the ONFI parameter page (64),
+and NMBM refuses a signature whose spare_size differs. Bytes 64..95
+hold the on-die ECC and are never usable anyway. Same as OpenWrt's
+U-Boot (100-19-mtd-spi-nand-add-more-spi-nand-chips.patch).
+
+--- a/drivers/mtd/nand/spi/winbond.c	2026-11-20 13:34:11.313317747 +0000
++++ b/drivers/mtd/nand/spi/winbond.c	2026-11-20 13:34:11.335221033 +0000
+@@ -225,7 +225,7 @@
+ 		     SPINAND_ECCINFO(&w25m02gv_ooblayout, NULL)),
+ 	SPINAND_INFO("W25N01KV", /* 3.3V */
+ 		     SPINAND_ID(SPINAND_READID_METHOD_OPCODE_DUMMY, 0xae, 0x21),
+-		     NAND_MEMORG(1, 2048, 96, 64, 1024, 20, 1, 1, 1),
++		     NAND_MEMORG(1, 2048, 64, 64, 1024, 20, 1, 1, 1),
+ 		     NAND_ECCREQ(4, 512),
+ 		     SPINAND_INFO_OP_VARIANTS(&read_cache_variants,
+ 					      &write_cache_variants,

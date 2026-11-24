@@ -1,0 +1,6 @@
+*.patch text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.dts text eol=lf
+*.additions text eol=lf
+*.yml text eol=lf
